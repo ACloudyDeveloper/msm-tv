@@ -372,6 +372,14 @@
         <div class="instructions">
             Press <span>↑</span> <span>↓</span> to surf channels
         </div>
+        
+        <!-- Start overlay for audio -->
+        <div id="startOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <div style="text-align: center;">
+                <div style="font-family: 'VT323', monospace; font-size: 48px; color: #00ff41; text-shadow: 0 0 20px #00ff41; margin-bottom: 20px;">CLICK TO START</div>
+                <div style="font-family: 'VT323', monospace; font-size: 24px; color: rgba(255, 255, 255, 0.6);">Audio requires interaction</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -419,10 +427,11 @@
                 const video = document.createElement('video');
                 video.src = channel.url;
                 video.loop = true;
-                video.muted = true;
+                video.muted = true; // Start muted for autoplay
                 video.autoplay = true;
                 video.preload = 'auto';
                 video.playsInline = true;
+                video.volume = 0.7; // Set volume for when unmuted
                 
                 // Add loading indicator
                 const loading = document.createElement('div');
@@ -433,6 +442,16 @@
                 loading.style.left = '50%';
                 loading.style.transform = 'translate(-50%, -50%)';
                 div.appendChild(loading);
+                
+                // Show buffering state
+                video.addEventListener('waiting', () => {
+                    loading.style.display = 'block';
+                    loading.textContent = 'BUFFERING...';
+                });
+                
+                video.addEventListener('canplay', () => {
+                    loading.style.display = 'none';
+                });
                 
                 video.addEventListener('loadeddata', () => {
                     loading.style.display = 'none';
@@ -525,6 +544,19 @@
         }
 
         // ===== CHANNEL CHANGING =====
+        function preloadAdjacentChannels() {
+            // Preload previous and next channels
+            const prevChannel = (currentChannel - 1 + channels.length) % channels.length;
+            const nextChannel = (currentChannel + 1) % channels.length;
+            
+            [prevChannel, nextChannel].forEach(idx => {
+                const video = channelElements[idx].querySelector('video');
+                if (video && video.readyState < 3) { // Not loaded yet
+                    video.load();
+                }
+            });
+        }
+        
         function changeChannel(direction) {
             if (isChanging) return;
             isChanging = true;
@@ -541,9 +573,19 @@
                 // Hide current channel
                 channelElements[currentChannel].classList.remove('active');
                 
+                // Pause previous video to save bandwidth
+                const prevVideo = channelElements[currentChannel].querySelector('video');
+                if (prevVideo) prevVideo.pause();
+                
                 // Show next channel
                 currentChannel = nextChannel;
                 channelElements[currentChannel].classList.add('active');
+                
+                // Play new video
+                const nextVideo = channelElements[currentChannel].querySelector('video');
+                if (nextVideo) {
+                    nextVideo.play().catch(e => console.log('Play failed:', e));
+                }
                 
                 // Hide static
                 hideStatic();
@@ -552,6 +594,9 @@
                 setTimeout(() => {
                     channelDisplay.classList.remove('show');
                     isChanging = false;
+                    
+                    // Preload adjacent channels for smooth switching
+                    preloadAdjacentChannels();
                 }, 1500);
             }, STATIC_DURATION);
         }
@@ -640,6 +685,22 @@
 
         // Initialize audio context on first interaction
         document.addEventListener('click', initAudio, { once: true });
+        
+        // Start overlay handler
+        const startOverlay = document.getElementById('startOverlay');
+        if (startOverlay) {
+            startOverlay.addEventListener('click', () => {
+                // Hide overlay
+                startOverlay.style.display = 'none';
+                
+                // Unmute and play current video
+                const currentVideo = channelElements[currentChannel].querySelector('video');
+                if (currentVideo) {
+                    currentVideo.muted = false;
+                    currentVideo.play().catch(e => console.log('Autoplay failed:', e));
+                }
+            });
+        }
     </script>
 </body>
 </html>
